@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Survival 2D – Kompletny</title>
+<style>
+body { background:#222; color:white; font-family:Arial; text-align:center; margin:0; overflow:hidden; }
+canvas { display:block; margin:10px auto; border:3px solid #fff; }
+#stats { font-size:14px; margin:6px; }
+#bars { width:300px; margin:5px auto; }
+.bar { height:20px; background:#444; border:2px solid #fff; margin-bottom:5px; position:relative; }
+.fill { height:100%; background:limegreen; width:100%; }
+button { background:#444; color:white; border:2px solid #fff; margin:3px; padding:6px 12px; cursor:pointer; }
+button:hover{background:#666;}
+</style>
+</head>
+<body>
+<h1>🏝️ Survival 2D – Kompletny</h1>
+<canvas id="game" width="800" height="500"></canvas>
+<div id="stats"></div>
+<div id="bars">
+  <div class="bar"><div id="hungerFill" class="fill"></div></div>
+  Głód: <span id="hungerValue">100</span>/100  
+  <div class="bar"><div id="healthFill" class="fill"></div></div>
+  Zdrowie: <span id="healthValue">100</span>/100
+</div>
+<button id="buildBoat">🚤 Zbuduj łódkę (5 drewna, 2 żelaza)</button>
+<button id="upgradeAxe">🪓 Ulepsz topór (2 żelaza)</button>
+<button id="upgradePickaxe">⛏️ Ulepsz kilof (2 żelaza)</button>
+<button id="cookPot">🍲 Garnek (gotuj zupy)</button>
+<button id="restart">🔄 Restart</button>
+
+<script>
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+const hungerFill=document.getElementById("hungerFill");
+const healthFill=document.getElementById("healthFill");
+const hungerValue=document.getElementById("hungerValue");
+const healthValue=document.getElementById("healthValue");
+const stats=document.getElementById("stats");
+
+const player={x:400,y:250,size:20,color:"yellow",speed:3,onBoat:false};
+let keys={};
+let hunger=100;
+let health=100;
+let gameOver=false;
+
+// surowce
+let wood=0, stone=0, coal=0, ironOre=0, ironIngot=3, fish=0, coconuts=0, meat=0;
+let crab=0, seaweed=0, chicken=0, flour=0, tomatoes=0, cucumbers=0;
+let wheat=0, oats=0, corn=0;
+let sushi=0, gold=0;
+let soupCrab=0, soupChicken=0, soupTomato=0, soupCucumber=0, porridgeOats=0, bread=0;
+
+let hasBoat=false;
+let tools={axe:false, pickaxe:false, ironAxe:false, ironPickaxe:false};
+let resources=[], boars=[], islands=[];
+
+// handlarz
+const trader={x:700, y:100, size:30};
+
+// morze i wyspy
+function generateWorld(){
+  for(let i=0;i<6;i++){
+    islands.push({x:Math.random()*700+30,y:Math.random()*400+30,r:40+Math.random()*30});
+  }
+}
+
+function spawnResource(){
+  const types=["wood","stone","fish","coal","ironOre","coconut","crab","seaweed","chicken","flour","tomato","cucumber","wheat","oats","corn"];
+  const colors={wood:"#8B4513",stone:"#888",fish:"#00bfff",coal:"#222",ironOre:"#b0b0b0",coconut:"#a0522d",
+                crab:"#ff4500",seaweed:"#2e8b57",chicken:"#f4e1b3",flour:"#fff", tomato:"#ff6347", cucumber:"#32cd32",
+                wheat:"#deb887", oats:"#f5deb3", corn:"#ffd700"};
+  const t=types[Math.floor(Math.random()*types.length)];
+  const island=islands[Math.floor(Math.random()*islands.length)];
+  const angle=Math.random()*Math.PI*2;
+  const dist=Math.random()*island.r;
+  resources.push({x:island.x+Math.cos(angle)*dist,y:island.y+Math.sin(angle)*dist,size:15,type:t,color:colors[t]});
+}
+
+function spawnBoar(){
+  const island=islands[Math.floor(Math.random()*islands.length)];
+  boars.push({x:island.x+Math.random()*20,y:island.y+Math.random()*20,size:20,hp:30});
+}
+
+function dist(a,b){return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2);}
+
+function drawWorld(){
+  ctx.fillStyle="#006994";
+  ctx.fillRect(0,0,800,500);
+  for(const isl of islands){
+    ctx.beginPath(); ctx.arc(isl.x,isl.y,isl.r,0,Math.PI*2); ctx.fillStyle="#228B22"; ctx.fill();
+  }
+  // handlarz
+  ctx.fillStyle="orange"; ctx.fillRect(trader.x,trader.y,trader.size,trader.size);
+  ctx.fillStyle="white"; ctx.fillText("🛒",trader.x+7,trader.y+20);
+}
+
+function draw(){
+  drawWorld();
+  for(const r of resources){ctx.fillStyle=r.color; ctx.fillRect(r.x,r.y,r.size,r.size);}
+  ctx.fillStyle="brown"; for(const b of boars){ctx.fillRect(b.x,b.y,b.size,b.size);}
+  ctx.fillStyle=player.color; ctx.fillRect(player.x,player.y,player.size,player.size);
+  if(player.onBoat){ctx.strokeStyle="white"; ctx.strokeRect(player.x-5,player.y-5,player.size+10,player.size+10);}
+}
+
+function movePlayer(){
+  let spd = player.onBoat ? 5 : 3;
+  if(keys["ArrowUp"]) player.y-=spd;
+  if(keys["ArrowDown"]) player.y+=spd;
+  if(keys["ArrowLeft"]) player.x-=spd;
+  if(keys["ArrowRight"]) player.x+=spd;
+  player.x=Math.max(0,Math.min(canvas.width-player.size,player.x));
+  player.y=Math.max(0,Math.min(canvas.height-player.size,player.y));
+  let onLand=false;
+  for(const isl of islands){if(dist(player,isl)<isl.r){onLand=true;break;}}
+  if(!onLand && !player.onBoat){health-=0.5;}
+}
+
+function collect(){
+  for(let i=resources.length-1;i>=0;i--){
+    const r=resources[i];
+    if(player.x<r.x+r.size && player.x+player.size>r
